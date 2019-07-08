@@ -311,11 +311,120 @@ IMPORTANT NOTES:
    Donating to EFF:                    https://eff.org/donate-le
 ```
 
+#### Adding auto-refreshing of the SSL certificate
+
+First, create a new directory that is used by certbot to auto-refresh your new certificate: `sudo mkdir /var/www/letsencrypt` and reference to this location for a very specific http answer that 
+letsencrypt wants to verify. Open up your nginx configuration for foundry and add some more configuration items: `sudo nano /etc/nginx/sites-available/foundry`.
+
+Right above the section `location / { .... }` you prepend the following block:
+
+```
+include conf.d/drop;
+
+location ^~ /.well-known/acme-challenge {
+    allow all;
+    root /var/www/letsencrypt;
+    auth_basic off
+}
+```
+
+At the end, the whole configuration file should look like this:
+
+```
+server {
+    # Adjust this to your the FQDN you chose!
+    server_name                 foundry.myhost.com;
+
+    access_log                  /var/log/nginx/foundry/access.log;
+    error_log                   /var/log/nginx/foundry/error.log;
+
+    include conf.d/drop;
+
+    location ^~ /.well-known/acme-challenge {
+        allow all;
+       root /var/www/letsencrypt;
+       auth_basic off;
+    }
+
+    location / {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+
+        # Adjust the port number you chose!
+        proxy_pass              http://127.0.0.1:8080;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_read_timeout      90;
+
+        # Again, adjust both your FQDN and your port number here!
+        proxy_redirect          http://127.0.0.1:8080 http://foundry.myhost.com;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/foundry.myhost.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/foundry.myhost.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+
+server {
+    if ($host = foundry.myhost.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+    listen 80;
+    server_name                 foundry.myhost.com;
+    return 404; # managed by Certbot
+}
+
+```
+
+Now create a new file `sudo nano /etc/nginx/conf.d/drop`, add the following contents into it and restart nginx with `sudo service nginx restart`: 
+
+```
+# Most sites won't have configured favicon or robots.txt
+# and since its always grabbed, turn it off in access log
+# and turn off it's not-found error in the error log
+location = /favicon.ico { access_log off; log_not_found off; }
+location = /robots.txt { access_log off; log_not_found off; }
+location = /apple-touch-icon.png { access_log off; log_not_found off; }
+location = /apple-touch-icon-precomposed.png { access_log off; log_not_found off; }
+
+# Rather than just denying .ht* in the config, why not deny
+# access to all .invisible files
+location ~ /\. { deny  all; access_log off; log_not_found off; }
+```
+
+### Additional configuration for nginx
+
+Create a new file `sudo nano /etc/nginx/conf.d/drop.conf` and insert the following contents in there:
+
+```
+# Most sites won't have configured favicon or robots.txt
+# and since its always grabbed, turn it off in access log
+# and turn off it's not-found error in the error log
+location = /favicon.ico { access_log off; log_not_found off; }
+location = /robots.txt { access_log off; log_not_found off; }
+location = /apple-touch-icon.png { access_log off; log_not_found off; }
+location = /apple-touch-icon-precomposed.png { access_log off; log_not_found off; }
+
+# Rather than just denying .ht* in the config, why not deny
+# access to all .invisible files
+location ~ /\. { deny  all; access_log off; log_not_found off; }
+```
+
 ## Final steps
 
 Open up your webbrowser at http://foundry.myhost.com and it should automatically redirect to the encrypted site at https://foundry.myhost.com. Everything else should work as you are used to.
 
 ## Something went wrong
 
-* Make sure that your port 443 is accessible. UFW (Universal FireWall) is pretty common, so you can check `ufw status` and see if that is enabled. `sudo ufw allow https` should add the 443 to your firewall. 
+* Make sure that your port 443 is accessible. UFW (Universal FireWall) is pretty common, so you can check `ufw status` and see if that is enabled. `sudo ufw allow https` and `sudo ufw allow http` should add ports 80 and 443 to your firewall, thus allowing access to your ssl encrypted foundry instance and the certbot for it's automatic certification renewal
 * Check the `pm2 log foundry` for errors on the configuration there. Perhaps foundry starts up, fails and pm2 wants to restart it all the time, resulting in an endless loop of frustration for everybody? Stop the process by `pm2 stop foundry` and run it manually `node /home/ubuntu/foundry/resources/app/main.js` and check for errors (directory permissions are alright? Perhaps you changed anything there and it's just not working?).
+
+## Contributors
+@ShadowMorph from Discord provided additions to the nginx/SSl configuration which I partly added to the above config. Without your support, the auto-refreshing would not have worked and the SSL configuration would be quite a bit less robust. Thanks!
