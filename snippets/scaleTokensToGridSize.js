@@ -3,8 +3,7 @@ let scaleTokensToGridSize = () => {
 
         // get the scene
         let scene = game.scenes.get(sceneId);
-        console.log(scene);
-
+        
         // if the scenes grid distance is measured in feet, we
         // will scale the token according to the scene itself
         if (scene.data.gridUnits.indexOf('ft') !== -1) {
@@ -27,19 +26,21 @@ let scaleTokensToGridSize = () => {
             // let's see if we have info about the grid-units a create
             // of this size should occupy on a 5ft grid
             if (sizes.has(actorSize.value)) {
-
                 let targetSize = sizes.get(actorSize.value);
                 let scale = 5 / gridSize;
 
-                // put the token width/height for a map with a 5ft grid
-                if (token.width !== targetSize || token.height !== targetSize) {
-                    token.width = targetSize;
-                    token.height = targetSize;
+                // Props to @ayan, suggesting a grid width/height of 1/1 and instead scaling the icon 
+                // down to leave it centered on the tile
+                if (targetSize < 1) {
+                    scale *= targetSize;
+                    targetSize = 1;
                 }
-
+                
                 // then scale the token if the map has a grid != 5ft
                 // scale is 1 for a map with 5ft grid, so it won't be changed
                 token.scale = scale;
+                token.width = targetSize;
+                token.height = targetSize;
             }
         }
     });
